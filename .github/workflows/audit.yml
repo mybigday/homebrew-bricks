@@ -14,20 +14,31 @@ jobs:
   audit:
     # macos-latest is arm64, so the arm64-only CTOR casks install here too.
     runs-on: macos-latest
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      # Resolve casks from the checked-out tap (this PR), not the published API copy.
+      HOMEBREW_NO_INSTALL_FROM_API: 1
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # Make this PR's casks resolvable by name (mybigday/bricks/<token>).
+      - name: Link checkout as a tap
+        run: |
+          tap_dir="$(brew --repository)/Library/Taps/mybigday/homebrew-bricks"
+          mkdir -p "$(dirname "$tap_dir")"
+          ln -s "$GITHUB_WORKSPACE" "$tap_dir"
 
       - name: Identify changed casks
         id: changed
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          files="$(git diff --name-only "$base" "$head" -- 'Casks/*.rb' || true)"
+          tokens="$(git diff --name-only "$base" "$head" -- 'Casks/*.rb' | sed -n 's#^Casks/\(.*\)\.rb$#\1#p' || true)"
           {
-            echo "files<<EOF"
-            echo "$files"
+            echo "tokens<<EOF"
+            echo "$tokens"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -36,29 +47,28 @@ jobs:
         run: brew style Casks/*.rb
 
       - name: brew audit (changed casks)
-        if: steps.changed.outputs.files != ''
+        if: steps.changed.outputs.tokens != ''
         run: |
-          while IFS= read -r f; do
-            [ -n "$f" ] || continue
-            echo "::group::brew audit $f"
-            brew audit --cask --strict --online "$f"
+          while IFS= read -r t; do
+            [ -n "$t" ] || continue
+            echo "::group::brew audit $t"
+            brew audit --cask --strict --online "mybigday/bricks/$t"
             echo "::endgroup::"
-          done <<< "${{ steps.changed.outputs.files }}"
+          done <<< "${{ steps.changed.outputs.tokens }}"
 
-      # Real install/uninstall on the runner — catches URL 404s, checksum drift,
-      # and bundle-name typos that audit alone can miss.
+      # Real install/uninstall on the runner — catches checksum drift, missing
+      # release assets, and bundle-name typos that audit alone can miss.
       - name: brew install (changed casks)
-        if: steps.changed.outputs.files != ''
+        if: steps.changed.outputs.tokens != ''
         run: |
-          while IFS= read -r f; do
-            [ -n "$f" ] || continue
-            token="$(basename "$f" .rb)"
-            if [ "$(uname -m)" != "arm64" ] && grep -q 'depends_on arch: :arm64' "$f"; then
-              echo "skip $token (arm64-only) on $(uname -m) runner"
+          while IFS= read -r t; do
+            [ -n "$t" ] || continue
+            if [ "$(uname -m)" != "arm64" ] && grep -q 'depends_on arch: :arm64' "Casks/$t.rb"; then
+              echo "skip $t (arm64-only) on $(uname -m) runner"
               continue
             fi
-            echo "::group::brew install --cask $f"
-            brew install --cask --no-quarantine "$f"
-            brew uninstall --cask "$token"
+            echo "::group::brew install --cask $t"
+            brew install --cask "mybigday/bricks/$t"
+            brew uninstall --cask "mybigday/bricks/$t"
             echo "::endgroup::"
-          done <<< "${{ steps.changed.outputs.files }}"
+          done <<< "${{ steps.changed.outputs.tokens }}"
