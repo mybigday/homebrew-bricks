@@ -85,17 +85,3 @@ ruby scripts/update-cask.rb Casks/bricks-ctor.rb --force  # re-host the current 
 
 `--force` skips the version check — used to seed the first release for a version
 the cask already pins.
-
-## Repo setup (one-time)
-
-For the bot PRs to auto-merge after audit passes:
-
-1. **Settings → General → Allow auto-merge.**
-2. **Branch protection** on `main`: require the `audit` status check.
-3. Add a **`TAP_PAT`** secret (a PAT or GitHub App token with `repo` +
-   `workflow`). PRs opened with the default `GITHUB_TOKEN` don't trigger the audit
-   workflow, so without `TAP_PAT` the bump PRs are opened for manual merge.
-
-The repo must be **public** for `brew install` to download release assets
-(Homebrew doesn't authenticate to private repos). The re-hosted DMGs are identical
-to the already-public CDN builds.
