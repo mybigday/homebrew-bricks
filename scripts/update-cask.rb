@@ -127,9 +127,9 @@ Dir.mktmpdir("cask-#{token}") do |dir|
   unless system("gh", "release", "view", tag, out: File::NULL, err: File::NULL)
     system("gh", "release", "create", tag, "--title", tag,
            "--notes", "Re-hosted #{token} #{new_version} DMG(s) for the Homebrew cask.",
-           *assets) or die "gh release create #{tag} failed"
+           *assets, out: $stderr) or die "gh release create #{tag} failed"
   end
-  system("gh", "release", "upload", tag, *assets, "--clobber") or die "gh release upload #{tag} failed"
+  system("gh", "release", "upload", tag, *assets, "--clobber", out: $stderr) or die "gh release upload #{tag} failed"
 end
 
 if dual_arch
