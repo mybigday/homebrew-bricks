@@ -7,7 +7,8 @@ cask "bricks-desktop-foundation" do
 
   # Per-version mirror of the CDN build (re-hosted so downloads stay checksum-pinned);
   # livecheck below tracks the CDN release channel as the source of truth.
-  url "https://github.com/mybigday/homebrew-bricks/releases/download/bricks-desktop-foundation-#{version}/BRICKS-#{arch}.dmg"
+  url "https://github.com/mybigday/homebrew-bricks/releases/download/bricks-desktop-foundation-#{version}/BRICKS-#{arch}.dmg",
+      verified: "github.com/mybigday/homebrew-bricks/"
   name "BRICKS Desktop Foundation"
   desc "BRICKS launcher and foundation runtime for desktop"
   homepage "https://bricks.tools/"

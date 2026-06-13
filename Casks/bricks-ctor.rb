@@ -4,7 +4,8 @@ cask "bricks-ctor" do
 
   # Per-version mirror of the CDN build (re-hosted so downloads stay checksum-pinned);
   # livecheck below tracks the CDN release channel as the source of truth.
-  url "https://github.com/mybigday/homebrew-bricks/releases/download/bricks-ctor-#{version}/CTOR-arm64.dmg"
+  url "https://github.com/mybigday/homebrew-bricks/releases/download/bricks-ctor-#{version}/CTOR-arm64.dmg",
+      verified: "github.com/mybigday/homebrew-bricks/"
   name "CTOR"
   desc "AI agent workspace for building BRICKS projects"
   homepage "https://docs.bricks.tools/ctor"

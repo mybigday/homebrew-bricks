@@ -4,7 +4,8 @@ cask "bricks-ctor-beta" do
 
   # Per-version mirror of the CDN beta build (re-hosted so downloads stay checksum-pinned);
   # livecheck below tracks the CDN beta channel as the source of truth.
-  url "https://github.com/mybigday/homebrew-bricks/releases/download/bricks-ctor-beta-#{version}/CTOR-Beta-arm64.dmg"
+  url "https://github.com/mybigday/homebrew-bricks/releases/download/bricks-ctor-beta-#{version}/CTOR-Beta-arm64.dmg",
+      verified: "github.com/mybigday/homebrew-bricks/"
   name "CTOR Beta"
   desc "AI agent workspace for building BRICKS projects (beta channel)"
   homepage "https://docs.bricks.tools/ctor"
