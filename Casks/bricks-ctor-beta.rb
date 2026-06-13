@@ -2,7 +2,9 @@ cask "bricks-ctor-beta" do
   version "2.25.0-beta.42"
   sha256 "6a9866fa28caf2d45bd275382f4c2f79c82c8145edde031f912da2a2d56535af"
 
-  url "https://cdn.bricks.tools/bricks-project-desktop/beta/CTOR-Beta-arm64.dmg"
+  # Per-version mirror of the CDN beta build (re-hosted so downloads stay checksum-pinned);
+  # livecheck below tracks the CDN beta channel as the source of truth.
+  url "https://github.com/mybigday/homebrew-bricks/releases/download/bricks-ctor-beta-#{version}/CTOR-Beta-arm64.dmg"
   name "CTOR Beta"
   desc "AI agent workspace for building BRICKS projects (beta channel)"
   homepage "https://docs.bricks.tools/ctor"
@@ -15,7 +17,7 @@ cask "bricks-ctor-beta" do
   end
 
   auto_updates true
-  depends_on arch: :arm64
+  depends_on arch: :arm64, macos: :monterey
 
   app "CTOR Beta.app"
 

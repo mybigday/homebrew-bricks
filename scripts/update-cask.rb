@@ -1,30 +1,39 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Update a single cask to the latest version published on its livecheck channel.
+# Bump a single cask to the latest build on its CDN channel, re-hosting the DMG(s)
+# as a versioned GitHub Release so the cask download stays checksum-pinned.
 #
-#   ruby scripts/update-cask.rb Casks/<cask>.rb
+#   ruby scripts/update-cask.rb Casks/<cask>.rb [--force]
 #
-# The cask itself is the single source of truth: this reads the current `version`
-# and the `livecheck` JSON URL straight out of the .rb file, fetches that channel
-# manifest (the version.json produced by each app's build-version-file.js,
-# shaped { "version", "files": { "mac": { "<arch>": "<dmg url>" } } }), and if a
-# newer version is published it downloads the DMG(s), computes sha256, rewrites
-# `version` + `sha256` in place, and prints the new version to stdout.
+# The cask is the source of truth for everything except the binary:
+#   - current `version`            – what we ship now
+#   - `livecheck` url              – the CDN version.json to poll
+#   - `sha256 arm:` / `intel:`     – dual-arch (vs single-arch sha256 "…")
+#   - `cask "<token>"`             – the GitHub Release tag is "<token>-<version>"
 #
-# Contract (so the workflow can stay dumb):
-#   - prints the new version + exits 0  ........ cask was updated
-#   - prints nothing + exits 0  ................ already up to date / regression
-#   - exits non-zero  ......................... real error (fetch failed, or a
-#                                               dual-arch cask is mid-publish with
-#                                               only one architecture available)
+# The CDN version.json (build-version-file.js output) supplies the new version and
+# per-arch DMG URLs: { "version", "files": { "mac": { "<arch>": "<dmg url>" } } }.
 #
-# Dual-arch casks are detected by the `sha256 arm:` / `intel:` form.
+# When the channel is ahead (or always, with --force):
+#   1. download the CDN DMG(s)
+#   2. sha256 each
+#   3. gh release create / upload  <token>-<version>   (idempotent)
+#   4. rewrite `version` + `sha256` (the url is #{version}-interpolated, no edit)
+#
+# Output contract:
+#   - prints the new version + exits 0  → release published, cask patched
+#   - prints nothing + exits 0          → already current / version regression
+#   - exits non-zero                    → fetch failed, partial multi-arch publish,
+#                                         or a `gh` call failed
+#
+# Requires `gh` on PATH, authenticated, with GH_REPO pointing at the tap repo.
 
 require "digest"
 require "json"
 require "net/http"
 require "rubygems/version"
+require "tmpdir"
 require "uri"
 
 def die(msg)
@@ -32,31 +41,37 @@ def die(msg)
   exit 1
 end
 
-cask_path = ARGV[0] or die "usage: update-cask.rb Casks/<cask>.rb"
+force = !ARGV.delete("--force").nil?
+cask_path = ARGV[0] or die "usage: update-cask.rb Casks/<cask>.rb [--force]"
 die "no such file: #{cask_path}" unless File.file?(cask_path)
 
 src = File.read(cask_path)
+token = src[/cask\s+"([^"]+)"/, 1] or die "no cask token in #{cask_path}"
 current_version = src[/^\s*version\s+"([^"]+)"/, 1] or die "no version stanza in #{cask_path}"
 livecheck_url = src[/livecheck do\s+url\s+"([^"]+)"/m, 1] or die "no livecheck url in #{cask_path}"
 dual_arch = src.match?(/^\s*sha256\s+arm:/)
 
-# GET a URL, following redirects, yielding each body chunk (so large DMGs never
-# have to be buffered whole). Returns the final response for callers that want
-# the full body instead.
-def http_get(url, limit: 5, &block)
+def http_get(url, limit: 5)
+  die "too many redirects for #{url}" if limit <= 0
+  uri = URI(url)
+  res = Net::HTTP.get_response(uri)
+  case res
+  when Net::HTTPSuccess then res.body
+  when Net::HTTPRedirection then http_get(res["location"], limit: limit - 1)
+  else die "GET #{url} -> #{res.code} #{res.message}"
+  end
+end
+
+def download(url, dest, limit: 5)
   die "too many redirects for #{url}" if limit <= 0
   uri = URI(url)
   Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https") do |http|
     http.request(Net::HTTP::Get.new(uri)) do |res|
       case res
       when Net::HTTPSuccess
-        if block
-          res.read_body(&block)
-        else
-          return res.body
-        end
+        File.open(dest, "wb") { |f| res.read_body { |chunk| f.write(chunk) } }
       when Net::HTTPRedirection
-        return http_get(res["location"], limit: limit - 1, &block)
+        return download(res["location"], dest, limit: limit - 1)
       else
         die "GET #{url} -> #{res.code} #{res.message}"
       end
@@ -64,14 +79,8 @@ def http_get(url, limit: 5, &block)
   end
 end
 
-def sha256_of(url)
-  digest = Digest::SHA256.new
-  http_get(url) { |chunk| digest.update(chunk) }
-  digest.hexdigest
-end
-
-# Gem::Version understands "2.25.0.beta.42" but not the "-" separator; normalize
-# so beta builds sort below their release (2.24.7 < 2.25.0.beta.42 < 2.25.0).
+# Gem::Version understands "2.25.0.beta.42" but not "-"; normalize so a beta sorts
+# below its release (2.24.7 < 2.25.0.beta.42 < 2.25.0).
 def gemver(str)
   Gem::Version.new(str.tr("-", "."))
 rescue ArgumentError
@@ -82,29 +91,55 @@ manifest = JSON.parse(http_get(livecheck_url))
 new_version = manifest["version"] or die "no version in #{livecheck_url}"
 mac = manifest.dig("files", "mac") or die "no files.mac in #{livecheck_url}"
 
-cur = gemver(current_version)
-nxt = gemver(new_version)
-if cur && nxt
-  exit 0 if nxt <= cur # up to date, or a regression we refuse to follow
-elsif new_version == current_version
-  exit 0
+unless force
+  cur = gemver(current_version)
+  nxt = gemver(new_version)
+  if cur && nxt
+    exit 0 if nxt <= cur # up to date, or a regression we refuse to follow
+  elsif new_version == current_version
+    exit 0
+  end
+end
+
+arch_urls =
+  if dual_arch
+    {
+      "arm64" => (mac["arm64"] or die "manifest missing mac.arm64"),
+      "x64" => (mac["x64"] or die "manifest missing mac.x64 (partial publish?)"),
+    }
+  else
+    { "arm64" => (mac["arm64"] or die "manifest missing mac.arm64") }
+  end
+
+tag = "#{token}-#{new_version}"
+shas = {}
+
+Dir.mktmpdir("cask-#{token}") do |dir|
+  assets = arch_urls.map do |arch, url|
+    dest = File.join(dir, File.basename(URI(url).path))
+    download(url, dest)
+    shas[arch] = Digest::SHA256.file(dest).hexdigest
+    dest
+  end
+
+  # Idempotent: create the release if it's missing, then (re)upload every asset so
+  # re-runs and resumed/partial uploads converge on the full set.
+  unless system("gh", "release", "view", tag, out: File::NULL, err: File::NULL)
+    system("gh", "release", "create", tag, "--title", tag,
+           "--notes", "Re-hosted #{token} #{new_version} DMG(s) for the Homebrew cask.",
+           *assets) or die "gh release create #{tag} failed"
+  end
+  system("gh", "release", "upload", tag, *assets, "--clobber") or die "gh release upload #{tag} failed"
 end
 
 if dual_arch
-  arm_url = mac["arm64"] or die "manifest is missing mac.arm64"
-  intel_url = mac["x64"] or die "manifest is missing mac.x64 (partial publish?)"
-  arm_sha = sha256_of(arm_url)
-  intel_sha = sha256_of(intel_url)
   src = src.sub(/^(\s*)sha256\s+arm:\s+"[^"]+",\s*\n\s*intel:\s+"[^"]+"/m) do
     indent = Regexp.last_match(1)
-    %(#{indent}sha256 arm:   "#{arm_sha}",\n#{indent}       intel: "#{intel_sha}")
+    %(#{indent}sha256 arm:   "#{shas["arm64"]}",\n#{indent}       intel: "#{shas["x64"]}")
   end
 else
-  arm_url = mac["arm64"] or die "manifest is missing mac.arm64"
-  sha = sha256_of(arm_url)
-  src = src.sub(/^(\s*)sha256\s+"[^"]+"/) { "#{Regexp.last_match(1)}sha256 \"#{sha}\"" }
+  src = src.sub(/^(\s*)sha256\s+"[^"]+"/) { "#{Regexp.last_match(1)}sha256 \"#{shas["arm64"]}\"" }
 end
-
 src = src.sub(/^(\s*)version\s+"[^"]+"/) { "#{Regexp.last_match(1)}version \"#{new_version}\"" }
 File.write(cask_path, src)
 puts new_version

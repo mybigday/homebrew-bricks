@@ -1,8 +1,8 @@
 name: Update casks
 
-# Polls each cask's release/beta channel and opens a bump PR when a newer build
-# is published. The monorepo's own upload-release.js is untouched — this tap is
-# the only thing that watches the CDN.
+# Polls each cask's CDN channel, re-hosts any newer build as a versioned GitHub
+# Release in this repo, and opens a bump PR. The monorepo's own upload-release.js
+# is untouched — this tap is the only thing that watches the CDN.
 
 on:
   schedule:
@@ -23,13 +23,19 @@ jobs:
           - bricks-desktop-foundation
           - bricks-ctor
           - bricks-ctor-beta
+    env:
+      GH_REPO: ${{ github.repository }}
+      # A PAT (or GitHub App token) lets the bump PR trigger the audit workflow and
+      # makes --auto merge meaningful; GITHUB_TOKEN-authored PRs don't trigger other
+      # workflows. Releases are created fine with either token.
+      GH_TOKEN: ${{ secrets.TAP_PAT || secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
-      # update-cask.rb prints the new version (and patches the file) only when the
-      # channel is ahead; it exits non-zero on a real failure such as a dual-arch
-      # cask caught mid-publish with only one architecture available.
-      - name: Check channel and patch cask
+      # Downloads the CDN DMG(s), re-hosts them as the <cask>-<version> release, and
+      # patches version+sha256. Exits non-zero on fetch error or a partial publish
+      # (dual-arch cask caught mid-publish with only one architecture available).
+      - name: Mirror new build and patch cask
         id: update
         run: |
           new_version="$(ruby scripts/update-cask.rb "Casks/${{ matrix.cask }}.rb")"
@@ -42,11 +48,6 @@ jobs:
 
       - name: Open pull request
         if: steps.update.outputs.changed == 'true'
-        env:
-          # A PAT (or GitHub App token) lets the audit workflow run on the PR and
-          # makes --auto merge meaningful; GITHUB_TOKEN-authored PRs don't trigger
-          # other workflows, so without TAP_PAT the PR is opened for a human.
-          GH_TOKEN: ${{ secrets.TAP_PAT || secrets.GITHUB_TOKEN }}
         run: |
           cask="${{ matrix.cask }}"
           version="${{ steps.update.outputs.version }}"
@@ -69,7 +70,7 @@ jobs:
             --base main \
             --head "$branch" \
             --title "chore(${cask}): update to ${version}" \
-            --body "Automated bump of \`${cask}\` to \`${version}\`, opened by the update-casks workflow."
+            --body "Automated bump of \`${cask}\` to \`${version}\`. DMG re-hosted at the \`${cask}-${version}\` release."
 
           # Requires "Allow auto-merge" + a required status check (audit) on the repo.
           gh pr merge "$branch" --auto --squash \

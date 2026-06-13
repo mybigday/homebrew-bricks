@@ -5,7 +5,9 @@ cask "bricks-desktop-foundation" do
   sha256 arm:   "e323c7b1f000db386bf6bf2bbbb56d0cfd0d2e69e2098a8f7be50acd8a4c2a69",
          intel: "cd5805f28d84234f1496b83486830c10b79e7a36ce6258df1ad03bc34e03b31e"
 
-  url "https://cdn.bricks.tools/bricks-launcher/release/desktop/BRICKS-#{arch}.dmg"
+  # Per-version mirror of the CDN build (re-hosted so downloads stay checksum-pinned);
+  # livecheck below tracks the CDN release channel as the source of truth.
+  url "https://github.com/mybigday/homebrew-bricks/releases/download/bricks-desktop-foundation-#{version}/BRICKS-#{arch}.dmg"
   name "BRICKS Desktop Foundation"
   desc "BRICKS launcher and foundation runtime for desktop"
   homepage "https://bricks.tools/"
@@ -18,6 +20,7 @@ cask "bricks-desktop-foundation" do
   end
 
   auto_updates true
+  depends_on macos: :monterey
 
   app "BRICKS Desktop Foundation.app"
 

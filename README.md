@@ -37,31 +37,54 @@ of that:
   data. (If you only ever ran beta, that directory is left behind by design.)
 - Running both apps at the same time means two processes against the same store.
 
-## How updates land
+## How releases & updates work
 
-Sources are published to the BRICKS CDN by the monorepo's own release pipeline;
-this tap only watches the canonical, CDN-served channels:
+The BRICKS CDN serves **unversioned** DMG URLs (e.g. `CTOR-arm64.dmg`, overwritten
+in place each release). Homebrew can't checksum-pin an unversioned URL, so instead
+this tap **re-hosts each build as a versioned GitHub Release** and the casks
+download from there with a pinned `sha256`:
 
-| Cask | Channel manifest |
+- `url` → `https://github.com/mybigday/homebrew-bricks/releases/download/<cask>-<version>/<dmg>`
+- `livecheck` → the CDN `version.json` (the source of truth for "is there a new build")
+
+| Cask | livecheck channel (source) |
 |---|---|
 | `bricks-desktop-foundation` | `https://cdn.bricks.tools/bricks-launcher/release/desktop/version.json` |
 | `bricks-ctor` | `https://cdn.bricks.tools/bricks-project-desktop/release/version.json` |
 | `bricks-ctor-beta` | `https://cdn.bricks.tools/bricks-project-desktop/beta/version.json` |
 
-> The stable build is uploaded to a `prerelease/` path and **manually promoted**
-> to `release/`; this tap intentionally tracks `release/` so it only follows
-> promoted, shipped builds. Beta is published straight to `beta/`.
+> The stable build is uploaded to a `prerelease/` CDN path and **manually
+> promoted** to `release/`; this tap tracks `release/` so it only follows promoted,
+> shipped builds. Beta is published straight to `beta/`.
+
+### Automation
 
 `.github/workflows/update-casks.yml` polls every 30 minutes (and on demand). For
-each cask it runs `scripts/update-cask.rb`, which reads the cask's current
-version and livecheck URL, compares against the channel manifest, and — when the
-channel is ahead — downloads the DMG(s), recomputes `sha256`, rewrites the cask,
-and opens a `chore(<cask>): update to <version>` PR. It refuses to downgrade and
-fails loudly if a dual-arch cask is caught mid-publish with only one arch up.
+each cask it runs `scripts/update-cask.rb`, which:
 
-`.github/workflows/audit.yml` runs on every PR that touches a cask:
-`brew style`, `brew audit --cask --strict --online`, and a real
-`brew install --cask` / `uninstall` on a macOS runner.
+1. reads the cask's current version + livecheck URL,
+2. fetches the channel `version.json` and compares versions (refusing downgrades,
+   and failing loudly if a dual-arch cask is mid-publish with only one arch up),
+3. downloads the CDN DMG(s), computes `sha256`,
+4. creates/uploads the `<cask>-<version>` GitHub Release (idempotent), and
+5. rewrites `version` + `sha256` (the `url` is `#{version}`-interpolated) and opens
+   a `chore(<cask>): update to <version>` PR.
+
+`.github/workflows/audit.yml` runs on every cask PR: `brew style`,
+`brew audit --cask --strict --online`, and a real `brew install --cask` /
+`uninstall` on a macOS runner (the bump PR's release already exists, so the
+install pulls the just-published DMG).
+
+### Manual bump / re-host
+
+```sh
+export GH_REPO=mybigday/homebrew-bricks
+ruby scripts/update-cask.rb Casks/bricks-ctor.rb          # bump if the channel is ahead
+ruby scripts/update-cask.rb Casks/bricks-ctor.rb --force  # re-host the current version
+```
+
+`--force` skips the version check — used to seed the first release for a version
+the cask already pins.
 
 ## Repo setup (one-time)
 
@@ -70,11 +93,9 @@ For the bot PRs to auto-merge after audit passes:
 1. **Settings → General → Allow auto-merge.**
 2. **Branch protection** on `main`: require the `audit` status check.
 3. Add a **`TAP_PAT`** secret (a PAT or GitHub App token with `repo` +
-   `workflow`). PRs opened with the default `GITHUB_TOKEN` don't trigger the
-   audit workflow, so without `TAP_PAT` the bump PRs are opened for manual merge.
+   `workflow`). PRs opened with the default `GITHUB_TOKEN` don't trigger the audit
+   workflow, so without `TAP_PAT` the bump PRs are opened for manual merge.
 
-## Manual bump
-
-```sh
-ruby scripts/update-cask.rb Casks/bricks-ctor.rb   # prints new version if bumped
-```
+The repo must be **public** for `brew install` to download release assets
+(Homebrew doesn't authenticate to private repos). The re-hosted DMGs are identical
+to the already-public CDN builds.
