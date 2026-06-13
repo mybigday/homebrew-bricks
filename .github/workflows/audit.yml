@@ -1,0 +1,64 @@
+name: Audit casks
+
+on:
+  pull_request:
+    paths:
+      - "Casks/**"
+      - "scripts/**"
+      - ".github/workflows/audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    # macos-latest is arm64, so the arm64-only CTOR casks install here too.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Identify changed casks
+        id: changed
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          files="$(git diff --name-only "$base" "$head" -- 'Casks/*.rb' || true)"
+          {
+            echo "files<<EOF"
+            echo "$files"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # Style every cask (cheap, catches stanza-order / formatting drift repo-wide).
+      - name: brew style
+        run: brew style Casks/*.rb
+
+      - name: brew audit (changed casks)
+        if: steps.changed.outputs.files != ''
+        run: |
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            echo "::group::brew audit $f"
+            brew audit --cask --strict --online "$f"
+            echo "::endgroup::"
+          done <<< "${{ steps.changed.outputs.files }}"
+
+      # Real install/uninstall on the runner — catches URL 404s, checksum drift,
+      # and bundle-name typos that audit alone can miss.
+      - name: brew install (changed casks)
+        if: steps.changed.outputs.files != ''
+        run: |
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            token="$(basename "$f" .rb)"
+            if [ "$(uname -m)" != "arm64" ] && grep -q 'depends_on arch: :arm64' "$f"; then
+              echo "skip $token (arm64-only) on $(uname -m) runner"
+              continue
+            fi
+            echo "::group::brew install --cask $f"
+            brew install --cask --no-quarantine "$f"
+            brew uninstall --cask "$token"
+            echo "::endgroup::"
+          done <<< "${{ steps.changed.outputs.files }}"
