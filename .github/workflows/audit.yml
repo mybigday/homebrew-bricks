@@ -18,6 +18,10 @@ jobs:
       HOMEBREW_NO_AUTO_UPDATE: 1
       # Resolve casks from the checked-out tap (this PR), not the published API copy.
       HOMEBREW_NO_INSTALL_FROM_API: 1
+      # `brew audit --online` hits the GitHub API; without a token it uses the
+      # unauthenticated 60-req/hr-per-IP limit, which shared runner IPs exhaust
+      # constantly. The Actions token raises this to 5,000/hr.
+      HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
