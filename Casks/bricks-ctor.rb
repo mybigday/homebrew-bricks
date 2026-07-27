@@ -1,6 +1,6 @@
 cask "bricks-ctor" do
-  version "2.24.13"
-  sha256 "ca5160221b49d85058a214382290ba72988b0446db79e4396d678c4e94d9b727"
+  version "2.25.0"
+  sha256 "a45b8835481a7475c06a934e1d308e3c784b69d10996d932cc6459f4bbb65314"
 
   # Per-version mirror of the CDN build (re-hosted so downloads stay checksum-pinned);
   # livecheck below tracks the CDN release channel as the source of truth.
