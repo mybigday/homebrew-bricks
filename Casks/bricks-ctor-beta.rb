@@ -1,6 +1,6 @@
 cask "bricks-ctor-beta" do
-  version "2.25.2-beta.3"
-  sha256 "f86965a0b2057bcc893e42ef9683914ac632ca16ddc6bf5cf44ca4a3161c99fe"
+  version "2.25.2-beta.4"
+  sha256 "a34ee63ce94ccec99466b8b203805c3c7064e5ae00eff529de2c2e47c75911ae"
 
   # Per-version mirror of the CDN beta build (re-hosted so downloads stay checksum-pinned);
   # livecheck below tracks the CDN beta channel as the source of truth.
