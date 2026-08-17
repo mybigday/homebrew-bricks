@@ -1,7 +1,7 @@
 cask "bricks-desktop-foundation" do
   arch arm: "arm64", intel: "x64"
 
-  version "2.25.2"
+  version "2.25.4"
   sha256 arm:   "873d0f7af0b4bab9ca5ef4adf64a2ef70fc8958a6591e1789ecad4adbee39c9f",
          intel: "bf6a098f0d6729567e08efaa28580b5c5961117b6a27b4574552e3ab3f679767"
 
