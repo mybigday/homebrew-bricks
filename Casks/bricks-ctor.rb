@@ -1,11 +1,10 @@
 cask "bricks-ctor" do
-  version "2.25.7"
-  sha256 "4dd91b9af40a801e5cb46c171585ed96e7a87ca3a236fcaef98f81cd9285ce06"
+  version "2.25.8"
+  sha256 "504e566ef1e45909714601bfbc95e8a2c7fcd361872fc4fbe53a1e0d34d0c6c9"
 
   # Per-version mirror of the CDN build (re-hosted so downloads stay checksum-pinned);
   # livecheck below tracks the CDN release channel as the source of truth.
-  url "https://github.com/mybigday/homebrew-bricks/releases/download/bricks-ctor-#{version}/CTOR-arm64.dmg",
-      verified: "github.com/mybigday/homebrew-bricks/"
+  url "https://github.com/mybigday/homebrew-bricks/releases/download/bricks-ctor-#{version}/CTOR-arm64.dmg"
   name "CTOR"
   desc "AI agent workspace for building BRICKS projects"
   homepage "https://docs.bricks.tools/ctor"
