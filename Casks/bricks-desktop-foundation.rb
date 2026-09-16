@@ -1,9 +1,9 @@
 cask "bricks-desktop-foundation" do
   arch arm: "arm64", intel: "x64"
 
-  version "2.25.7"
-  sha256 arm:   "396b7bc9555f7db19bf27d40a2c1acb708f7f8dd47bf256fdb7927fdd0baa631",
-         intel: "870b556d9ea83f6fd30d69f2df48b0775b387feb71593a46b6a2be7e13355b7a"
+  version "2.25.8"
+  sha256 arm:   "5e78ea20f5e7f70a88247e23e0eafa1077538e35a49b322a1ed16b69ce46b60f",
+         intel: "66922e103124fedbd460d1e60f85e90030154121bf4af9aced8decf94abf1906"
 
   # Per-version mirror of the CDN build (re-hosted so downloads stay checksum-pinned);
   # livecheck below tracks the CDN release channel as the source of truth.
