@@ -33,6 +33,8 @@ jobs:
           tap_dir="$(brew --repository)/Library/Taps/mybigday/homebrew-bricks"
           mkdir -p "$(dirname "$tap_dir")"
           ln -s "$GITHUB_WORKSPACE" "$tap_dir"
+          # Newer Homebrew refuses to load casks from untrusted taps.
+          brew trust mybigday/bricks
 
       - name: Identify changed casks
         id: changed
